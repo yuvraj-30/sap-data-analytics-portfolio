@@ -17,7 +17,9 @@ define view entity Z_C_SALES_PERFORMANCE
 
   sum(NetValue)  as TotalRevenue,
   sum(Quantity)  as TotalQuantity,
-  count_distinct(SalesOrder) as SalesOrders
+  
+  /* SYNTAX FIX: Standard ABAP CDS count distinct */
+  count( distinct SalesOrder ) as SalesOrders
 }
 where OrderDate is not null
   and Quantity > 0
