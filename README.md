@@ -21,7 +21,7 @@ This is intentionally **data-focused** (governed datasets + quality controls), r
 ## Repository structure
 
 ```
-აბap/   ABAP programs that extract/validate data patterns
+abap/   ABAP programs that extract/validate data patterns
 cds/    CDS Interface (I_*) and Consumption (C_*) views
 rap/    RAP query provider + service definition
 sql/    HANA SQL checks equivalent to ABAP DQ rules
