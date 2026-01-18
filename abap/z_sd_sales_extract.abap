@@ -10,12 +10,6 @@
 "   - Basic completeness and value validations
 "   - Simple DQ summary output (counts by severity)
 "   - Clean ABAP 7.4+ style (inline declarations, VALUE, FILTER)
-"
-" Notes
-"   - This is portfolio code. Table/field names follow standard SAP ERP.
-"   - Adapt selection fields and output targets to your environment.
-"   - If you want persistent logging, replace the in-memory DQ log with
-"     BAL application log or a Z-table.
 "-----------------------------------------------------------------------
 
 REPORT z_sd_sales_extract.
@@ -32,16 +26,16 @@ SELECTION-SCREEN END OF BLOCK b1.
 TEXT-001 = 'Selection'.
 
 TYPES: BEGIN OF ty_sales_row,
-         sales_order     TYPE vbak-vbeln,
-         item            TYPE vbap-posnr,
-         order_date      TYPE vbak-erdat,
-         sales_org       TYPE vbak-vkorg,
-         sold_to         TYPE vbak-kunnr,
-         material        TYPE vbap-matnr,
-         plant           TYPE vbap-werks,
-         quantity        TYPE vbap-kwmeng,
-         net_value       TYPE vbap-netwr,
-         currency        TYPE vbak-waerk,
+         sales_order TYPE vbak-vbeln,
+         item        TYPE vbap-posnr,
+         order_date  TYPE vbak-erdat,
+         sales_org   TYPE vbak-vkorg,
+         sold_to     TYPE vbak-kunnr,
+         material    TYPE vbap-matnr,
+         plant       TYPE vbap-werks,
+         quantity    TYPE vbap-kwmeng,
+         net_value   TYPE vbap-netwr,
+         currency    TYPE vbak-waerk,
        END OF ty_sales_row.
 
 TYPES: BEGIN OF ty_dq_issue,
@@ -82,7 +76,7 @@ START-OF-SELECTION.
   ENDIF.
 
   "-------------------------------------------------------------------
-  " Extract: Join sales header (VBAK) and item (VBAP)
+  " 1. Extract: Join sales header (VBAK) and item (VBAP)
   "-------------------------------------------------------------------
   SELECT
     vbak~vbeln  AS sales_order,
@@ -104,10 +98,14 @@ START-OF-SELECTION.
   UP TO @p_max ROWS.
 
   "-------------------------------------------------------------------
-  " Data quality checks (portfolio examples)
+  " 2. Special Check: Orphan Items (Rule #6 in documentation)
+  "-------------------------------------------------------------------
+  PERFORM check_orphans.
+
+  "-------------------------------------------------------------------
+  " 3. Standard Data Quality Checks
   "-------------------------------------------------------------------
   LOOP AT gt_sales ASSIGNING FIELD-SYMBOL(<r>).
-
     DATA(lv_key) = |{ <r>-sales_order }/{ <r>-item }|.
 
     " Completeness checks
@@ -132,11 +130,10 @@ START-OF-SELECTION.
     IF <r>-currency IS INITIAL.
       lcl_dq=>add_issue( 'W' , 'SD_MISSING_CURRENCY' , lv_key , 'Currency (WAERK) is initial; check header.' ).
     ENDIF.
-
   ENDLOOP.
 
   "-------------------------------------------------------------------
-  " Output summary
+  " 4. Output Summary
   "-------------------------------------------------------------------
   DATA(lv_rows) = lines( gt_sales ).
   WRITE: / 'Extract rows:', lv_rows.
@@ -160,7 +157,7 @@ START-OF-SELECTION.
   ENDLOOP.
 
   SKIP.
-  IF lv_e > 0.
+  IF lines( gt_dq ) > 0.
     WRITE: / 'DQ Issues (first 50):'.
     ULINE.
     LOOP AT gt_dq INTO DATA(ldq) FROM 1 TO 50.
@@ -168,3 +165,26 @@ START-OF-SELECTION.
     ENDLOOP.
   ENDIF.
 
+"-----------------------------------------------------------------------
+" FORM Definitions
+"-----------------------------------------------------------------------
+FORM check_orphans.
+  " Detect Sales Items (VBAP) that lack a Header (VBAK)
+  " This is a Left Outer Join where the right side is NULL
+  SELECT i~vbeln, i~posnr
+    FROM vbap AS i
+    LEFT OUTER JOIN vbak AS h ON h~vbeln = i~vbeln
+    WHERE h~vbeln IS NULL
+    INTO TABLE @DATA(lt_orphans)
+    UP TO 100 ROWS.
+
+  LOOP AT lt_orphans INTO DATA(ls_orphan).
+    DATA(lv_key) = |{ ls_orphan-vbeln }/{ ls_orphan-posnr }|.
+    lcl_dq=>add_issue(
+      i_severity = 'E'
+      i_check_id = 'SD_ORPHAN_ITEM'
+      i_key      = lv_key
+      i_message  = 'Sales Item exists without Sales Header (Broken Reference)'
+    ).
+  ENDLOOP.
+ENDFORM.
